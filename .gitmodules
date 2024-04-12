@@ -47,6 +47,6 @@
   url = https://github.com/NOAA-EMC/noahmp
   branch = develop
 [submodule "CATChem"]
-  path = CATChem
-  url = https://github.com/zhanglikate/CATChem.git
+	path = CATChem
+	url = https://github.com/zhanglikate/CATChem
   branch = gsl-updates
