@@ -257,7 +257,69 @@ if(CATCHEM)
   set(CATCHEM_BUILD_NUOPC ON CACHE BOOL "Enable CATChem NUOPC cap for UFS integration" FORCE)
   set(CATCHEM_TRACE_NUOPC OFF CACHE BOOL "Enable ESMF trace regions in the CATChem NUOPC cap" FORCE)
   set(CATCHEM_BUILD_TESTING OFF CACHE BOOL "Enable CATChem testing framework" FORCE)
+  # CATChem CCPP process suites (suite_CATChem_*.xml) additionally need the
+  # CCPP host interface library. UFSATM/ccpp sets CATCHEM_CCPP_ENABLED when
+  # any requested SDF is a CATChem suite and exports the host module contract.
+  if(CATCHEM_CCPP_ENABLED)
+    set(CATCHEM_BUILD_CCPP ON CACHE BOOL "Build CATChem's CCPP host interface" FORCE)
+    set(CATCHEM_CCPP_HOST_MODULE_DIR "${CATCHEM_CCPP_HOST_MODULE_DIR}" CACHE PATH
+        "Directory containing host CCPP Fortran modules" FORCE)
+    set(CATCHEM_CCPP_HOST_TARGET "${CATCHEM_CCPP_HOST_TARGET}" CACHE STRING
+        "Host target that exports CCPP modules and libraries" FORCE)
+  endif()
   add_subdirectory(CATChem)
+
+  # The CATChem CCPP scheme/driver sources are compiled directly into the
+  # host CCPP target (fv3ccpp/mpasccpp). They USE the CATChem API/registry
+  # modules (target CATChem) and the bridge precision/error modules (target
+  # catchem_utilities), whose .mod files land in ${CMAKE_BINARY_DIR}/include.
+  # Give the host target that module search path and a build-order dependency.
+  # Deliberately NOT target_link_libraries(<host> CATChem): CATChem is not in
+  # any install(EXPORT) set; the science archives reach the final UFS link
+  # through cc_ccpp (mirroring the cc_nuopc pattern).
+  if(CATCHEM_CCPP_ENABLED AND CATCHEM_CCPP_HOST_TARGET AND TARGET ${CATCHEM_CCPP_HOST_TARGET})
+    add_dependencies(${CATCHEM_CCPP_HOST_TARGET} CATChem catchem_utilities)
+    target_include_directories(${CATCHEM_CCPP_HOST_TARGET} PRIVATE
+      $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>)
+    # Static-archive link ordering: the catchem driver objects inside the host
+    # CCPP archive reference CATChem registry/API symbols, so the science
+    # archives must appear AFTER the host archive on the final link line.
+    # Link them by file path (mirroring cc_ccpp) so non-exported targets stay
+    # out of install(EXPORT); BUILD_INTERFACE keeps build-tree paths out of
+    # the installed interface.
+    # Plain signature: UFSATM/ccpp uses plain target_link_libraries for this
+    # target, and mixing plain/keyword signatures is a CMake error.
+    target_link_libraries(${CATCHEM_CCPP_HOST_TARGET}
+      $<BUILD_INTERFACE:$<TARGET_FILE:CATChem>>
+      $<BUILD_INTERFACE:$<TARGET_FILE:CATChem_process_seasalt>>
+      $<BUILD_INTERFACE:$<TARGET_FILE:CATChem_process_dust>>
+      $<BUILD_INTERFACE:$<TARGET_FILE:CATChem_process_drydep>>
+      $<BUILD_INTERFACE:$<TARGET_FILE:CATChem_process_wetdep>>
+      $<BUILD_INTERFACE:$<TARGET_FILE:CATChem_process_settling>>
+      $<BUILD_INTERFACE:$<TARGET_FILE:CATChem_process_so4chem>>
+      $<BUILD_INTERFACE:$<TARGET_FILE:CATChem_process_carbchem>>
+      $<BUILD_INTERFACE:$<TARGET_FILE:CATChem_core_cpp>>
+      $<BUILD_INTERFACE:$<TARGET_FILE:catchem_utilities>>
+      $<BUILD_INTERFACE:$<TARGET_FILE:GOCART2G>>)
+    if(TARGET yaml-cpp::yaml-cpp)
+      target_link_libraries(${CATCHEM_CCPP_HOST_TARGET}
+        $<BUILD_INTERFACE:$<TARGET_FILE:yaml-cpp::yaml-cpp>>)
+    elseif(TARGET yaml-cpp)
+      target_link_libraries(${CATCHEM_CCPP_HOST_TARGET}
+        $<BUILD_INTERFACE:$<TARGET_FILE:yaml-cpp>>)
+    endif()
+  endif()
+
+  # Same buggy-fpp workaround as the UFS GOCART block below: CATChem's
+  # vendored GOCART2G process library (GOCART2G_Process.F90, GOCART2G_MieMod.F90)
+  # uses the __RC__/__STAT__/__NF_STAT__ macros whose expansions straddle
+  # parentheses, which the fpp shipped with IntelLLVM 2025.2.1 rejects
+  # ("#error: number of arguments doesn't match"). Use the older fpp.
+  if(CMAKE_Platform STREQUAL "gaeac6.oneapi" AND
+     CMAKE_Fortran_COMPILER_ID STREQUAL "IntelLLVM" AND CMAKE_Fortran_COMPILER_VERSION VERSION_EQUAL 2025.2.1 AND
+     EXISTS "/opt/intel/oneapi/compiler/2025.0/bin/fpp" AND TARGET GOCART2G)
+    target_compile_options(GOCART2G PRIVATE -fpp-name=/opt/intel/oneapi/compiler/2025.0/bin/fpp -Qoption,fpp,-P)
+  endif()
 endif()
 
 ###############################################################################
@@ -392,6 +454,12 @@ if(CATCHEM)
   add_dependencies(ufs cc_nuopc)
   list(APPEND _ufs_defs_private FRONT_CATCHEM=cc_nuopc)
   list(APPEND _ufs_libs_public cc_nuopc)
+  # CCPP process-suite integration: the CATChem CCPP drivers are compiled into
+  # the atmosphere's CCPP cap; link the self-contained CATChem science archive.
+  if(CATCHEM_CCPP_ENABLED)
+    add_dependencies(ufs cc_ccpp)
+    list(APPEND _ufs_libs_public cc_ccpp)
+  endif()
 endif()
 
 if(UFS_GOCART)

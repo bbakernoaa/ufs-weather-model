@@ -192,3 +192,8 @@ if [ ${chm_model:-none} == "catchem" ]; then
   cp "${_catchem_root}"/tests/Configs/Default/CATChem_species.yml "${RUNDIR}"
   cp "${_catchem_root}"/drivers/nuopc/CATChem_field_mapping.yml "${RUNDIR}"
 fi
+
+#CATChem CCPP process-suite config override (e.g. catchem_ccpp_control)
+if [ -n "${CATCHM_CCPP_CONFIG:-}" ]; then
+  cp "${PATHRT}/parm/${CATCHM_CCPP_CONFIG}" "${RUNDIR}/CATChem_new_config.yml"
+fi

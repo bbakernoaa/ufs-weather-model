@@ -1,0 +1,197 @@
+###############################################################################
+#
+#  global control test for CATChem CCPP process suite (EmissionRemoval):
+#  sea-salt emission + wet deposition + settling + dry deposition run through
+#  CCPP (catchem1 group); no CATChem NUOPC component, no dust/chemistry.
+#
+###############################################################################
+
+TEST_DESCR="Compare global results for CATChem CCPP sea-salt emission and aerosol removal"
+
+CNTL_DIR=catchem_ccpp_control
+
+LIST_FILES="sfcf000.nc \
+            sfcf024.nc \
+            atmf000.nc \
+            atmf024.nc \
+            GFSFLX.GrbF00 \
+            GFSFLX.GrbF24 \
+            GFSPRS.GrbF00 \
+            GFSPRS.GrbF24 \
+            RESTART/20210323.060000.coupler.res \
+            RESTART/20210323.060000.fv_core.res.nc \
+            RESTART/20210323.060000.fv_core.res.tile1.nc \
+            RESTART/20210323.060000.fv_core.res.tile2.nc \
+            RESTART/20210323.060000.fv_core.res.tile3.nc \
+            RESTART/20210323.060000.fv_core.res.tile4.nc \
+            RESTART/20210323.060000.fv_core.res.tile5.nc \
+            RESTART/20210323.060000.fv_core.res.tile6.nc \
+            RESTART/20210323.060000.fv_srf_wnd.res.tile1.nc \
+            RESTART/20210323.060000.fv_srf_wnd.res.tile2.nc \
+            RESTART/20210323.060000.fv_srf_wnd.res.tile3.nc \
+            RESTART/20210323.060000.fv_srf_wnd.res.tile4.nc \
+            RESTART/20210323.060000.fv_srf_wnd.res.tile5.nc \
+            RESTART/20210323.060000.fv_srf_wnd.res.tile6.nc \
+            RESTART/20210323.060000.fv_tracer.res.tile1.nc \
+            RESTART/20210323.060000.fv_tracer.res.tile2.nc \
+            RESTART/20210323.060000.fv_tracer.res.tile3.nc \
+            RESTART/20210323.060000.fv_tracer.res.tile4.nc \
+            RESTART/20210323.060000.fv_tracer.res.tile5.nc \
+            RESTART/20210323.060000.fv_tracer.res.tile6.nc \
+            RESTART/20210323.060000.phy_data.tile1.nc \
+            RESTART/20210323.060000.phy_data.tile2.nc \
+            RESTART/20210323.060000.phy_data.tile3.nc \
+            RESTART/20210323.060000.phy_data.tile4.nc \
+            RESTART/20210323.060000.phy_data.tile5.nc \
+            RESTART/20210323.060000.phy_data.tile6.nc \
+            RESTART/20210323.060000.sfc_data.tile1.nc \
+            RESTART/20210323.060000.sfc_data.tile2.nc \
+            RESTART/20210323.060000.sfc_data.tile3.nc \
+            RESTART/20210323.060000.sfc_data.tile4.nc \
+            RESTART/20210323.060000.sfc_data.tile5.nc \
+            RESTART/20210323.060000.sfc_data.tile6.nc"
+
+export_fv3
+export_tiled
+
+NPZ=127
+NPZP=128
+DT_ATMOS=720
+DT_INNER=${DT_ATMOS}
+SYEAR=2021
+SMONTH=03
+SDAY=22
+SHOUR=06
+RESTART_INTERVAL='12 -1'
+OUTPUT_GRID='gaussian_grid'
+NSTF_NAME='2,0,0,0,0'
+WRITE_DOPOST=.true.
+
+# ATM-only: CATChem runs through the CCPP EmissionRemoval suite, not NUOPC.
+# CPLCHM stays true to stage GOCART ExtData (Mie optics tables, MERRA2 IC).
+# chm_model='catchem' only triggers CATChem YAML staging in control_run.IN.
+CPL=.false.
+CPLCHM=.true.
+CPLCAT=.false.
+UFS_CONFIGURE=ufs.configure.atm.IN
+
+atm_model='fv3'
+chm_model='catchem'
+coupling_interval_sec=${DT_ATMOS}
+
+# Custom CATChem config: only seasalt, wetdep, settling, drydep activated.
+CATCHM_CCPP_CONFIG=CATChem_ccpp_emission_removal.yml
+
+# default resources
+DOMAINS_STACK_SIZE=8000000
+
+IALB=2
+IEMS=2
+IOPT_DVEG=4
+IOPT_CRS=2
+IOPT_RAD=3
+IOPT_ALB=1
+IOPT_STC=3
+IOPT_SFC=3
+IOPT_TRS=2
+IOPT_DIAG=2
+
+D2_BG_K1=0.20
+D2_BG_K2=0.04
+PSM_BC=1
+DDDMP=0.1
+
+# Merra2 Aerosols & NSST
+USE_MERRA2=.true.
+IAER=1011
+NSTF_NAME=2,0,0,0,0
+
+LHEATSTRG=.false.
+LSEASPRAY=.true.
+
+# UGWPv1 (GSL drag + v1 non-stationary GWD): the CATChem_EmissionRemoval
+# suite uses ugwpv1_gsldrag, which rejects ugwp_v0 namelist settings.
+export_ugwpv1
+
+# export_ugwpv1 also retunes the dynamics (tau=8, k_split=1, n_split=4,
+# fv_sg_adj=1800, rf_cutoff=100). Those settings drive this C96/L127/DT720
+# configuration with prognostic GOCART tracers to a NaN energy instability
+# within ~6 timesteps. Restore the parent catchem_control dynamics, which are
+# stable for this configuration; the UGWPv1 scheme flags above are unaffected.
+TAU=0.0
+RF_CUTOFF=10.
+K_SPLIT=2
+N_SPLIT=5
+FV_SG_ADJ=450
+
+# CA stochastic convection is disabled for this CCPP process test: the focus is
+# the CATChem emission/removal processes, and the validated configuration runs
+# with stochastic physics off (the suite's stochastics group is then skipped,
+# matching the standard GFS suite behavior when no stochastic physics is active).
+DO_CA=.false.
+CA_SGS=.true.
+CA_GLOBAL=.false.
+NCA=1
+NCELLS=5
+NLIVES=12
+NTHRESH=18
+NSEED=1
+NFRACSEED=0.5
+CA_TRIGGER=.true.
+NSPINUP=1
+ISEED_CA=12345
+
+TILEDFIX=.true.
+FNALBC="'C96.snowfree_albedo.tileX.nc'"
+FNALBC2="'C96.facsf.tileX.nc'"
+FNTG3C="'C96.substrate_temperature.tileX.nc'"
+FNVEGC="'C96.vegetation_greenness.tileX.nc'"
+FNVETC="'C96.vegetation_type.tileX.nc'"
+FNSOTC="'C96.soil_type.tileX.nc'"
+FNSOCC="'C96.soil_color.tileX.nc'"
+FNSMCC=${FNSMCC_control}
+FNMSKH=${FNMSKH_control}
+FNVMNC="'C96.vegetation_greenness.tileX.nc'"
+FNVMXC="'C96.vegetation_greenness.tileX.nc'"
+FNSLPC="'C96.slope_type.tileX.nc'"
+FNABSC="'C96.maximum_snow_albedo.tileX.nc'"
+FSICL=0
+FSICS=0
+
+IMP_PHYSICS=8
+LGFDLMPRAD=.false.
+DO_SAT_ADJ=.false.
+DNATS=2
+DZ_MIN=6
+
+#required for NML.IN sharing
+MIN_SEAICE=0.15
+FRAC_GRID=.true.
+MOM6_OUTPUT_DIR=./MOM6_OUTPUT
+MOM6_RESTART_DIR=./RESTART/
+MOM6_RESTART_SETTING=n
+# Following not used for standalone)
+USE_CICE_ALB=.false.
+
+WRITE_NSFLIP=.true.
+
+FV3_RUN=control_run.IN
+CCPP_SUITE=CATChem_EmissionRemoval
+# CCPP constituents stay in kg/kg (species-manifest units), unlike the NUOPC
+# cap which exports ug/kg (aerosols) and ppm (gases). This field-table variant
+# declares kg/kg so diagnostic labels and MERRA2 IC conversions are consistent.
+FIELD_TABLE=field_table_thompson_noaero_tke_CATChem_ccpp
+# diag_table variant adds CATChem process diagnostics (seas_emis,
+# seas_num_emis, aero_wetdep, aero_cat_dq) to the 2D history output.
+DIAG_TABLE=diag_table_catchem_ccpp.IN
+INPUT_NML=global_control.nml.IN
+
+# RRTMGP
+DO_RRTMGP=.false.
+DOGP_LWSCAT=.true.
+
+SATMEDMF=.true.
+
+if [[ $MACHINE_ID = gaeac6 ]]; then
+  TPN=96
+fi
